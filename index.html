@@ -2,505 +2,360 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>数轴运动可视化 (移动端适配)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVENT HORIZON | 事件视界导航系统</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 10px;
-            margin: 0;
-            color: #333;
-            /* 防止移动端长按选中文字影响体验 */
-            -webkit-user-select: none;
-            user-select: none; 
+        /* ==================== 全局设定 ==================== */
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-warn: #ff3300;
+            --hud-bg: rgba(0, 10, 20, 0.25);
+            --border-color: rgba(0, 243, 255, 0.3);
         }
-        
-        h2 { 
-            font-size: 1.2rem; 
-            margin: 10px 0; 
-            text-align: center;
-        }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', monospace; }
+        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
 
-        /* 容器改为百分比宽度，最大不超过850px */
-        .canvas-container {
-            width: 100%;
-            max-width: 850px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            margin-bottom: 10px;
-            overflow: hidden; /* 防止canvas溢出 */
+        /* ==================== 顶部遮罩 (宽银幕感) ==================== */
+        .cinematic-bar {
+            position: fixed; top: 0; left: 0; width: 100%; height: 80px;
+            background: linear-gradient(to bottom, #000 0%, transparent 100%);
+            z-index: 5; display: flex; justify-content: space-between; padding: 20px 40px; box-sizing: border-box;
+            color: var(--neon-blue); font-size: 12px; opacity: 0.8; pointer-events: none;
         }
-        canvas { 
-            display: block; 
-            width: 100%; /* CSS控制显示宽度 */
-            height: auto;
-        }
-        
-        /* 状态面板 */
-        .status-panel {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            max-width: 850px;
-            background: #fff;
-            padding: 10px 15px;
-            border-radius: 8px;
-            box-sizing: border-box;
-            margin-bottom: 10px;
-            font-family: monospace;
-            font-size: 0.9rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
+        .warning-text { color: var(--neon-warn); animation: blink 1s infinite; }
 
-        /* 控制面板 */
-        .controls {
-            background: #fff;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            width: 100%;
-            max-width: 850px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            padding-bottom: 30px; /* 底部留白给手指操作 */
-        }
-
-        /* 进度条区域 */
-        .slider-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            font-size: 0.9rem;
-        }
-        /* 增大滑块触摸区域 */
-        input[type=range] {
-            flex-grow: 1;
-            height: 25px; 
-            cursor: pointer;
-        }
-
-        /* 按钮行 - 允许换行 */
-        .control-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        
-        /* 通用按钮样式 - 增大点击区域 */
-        button {
-            padding: 10px 12px; /* 增加内边距 */
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            background-color: #f9f9f9;
-            color: #444;
-            font-size: 0.9rem;
-            touch-action: manipulation; /* 优化点击响应 */
-            flex: 1 0 auto; /* 弹性布局，防止挤压 */
-        }
-        button:active { background-color: #e2e6ea; }
-        
-        button.primary { background-color: #007bff; color: white; border: none; font-weight: 600; min-width: 80px;}
-        button.primary:active { background-color: #0056b3; }
-        
-        button.reset { background-color: #fff; border-color: #dc3545; color: #dc3545; }
-        button.reset:active { background-color: #dc3545; color: white; }
-        
-        /* 关键点按钮群 */
-        .key-points-grid {
+        /* ==================== 底部全息仪表盘容器 ==================== */
+        #hud-container {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 35vh;
+            z-index: 10;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); /* 自动网格布局 */
-            gap: 8px;
-            width: 100%;
+            grid-template-columns: 1fr 2fr 1fr; /* 左-中-右 布局 */
+            gap: 20px;
+            padding: 0 40px 20px 40px;
+            box-sizing: border-box;
+            /* 3D 透视，营造驾驶舱感觉 */
+            perspective: 1000px;
+            pointer-events: none; /* 允许点击穿透空白区域 */
         }
-        button.key-point { 
-            background-color: #e8f5e9; 
-            color: #2e7d32; 
-            border: 1px solid #c8e6c9;
-            font-size: 0.85rem;
-            padding: 8px 4px;
-        }
-        button.key-point:active { background-color: #c8e6c9; }
 
-        /* 速度按钮组 */
-        .speed-label { font-size: 0.9rem; color: #666; width: 100%; text-align: center; margin-bottom: 5px; }
-        .speed-group {
-            display: flex;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
+        /* 通用面板样式 */
+        .panel {
+            background: var(--hud-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            padding: 15px;
+            position: relative;
+            /* 面板轻微向内倾斜 */
+            transform-style: preserve-3d;
+            transform: rotateX(10deg);
+            pointer-events: auto; /* 恢复交互 */
+            display: flex; flex-direction: column;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.1), inset 0 0 20px rgba(0, 243, 255, 0.05);
+        }
+
+        /* 装饰角标 */
+        .panel::after {
+            content: ''; position: absolute; bottom: -1px; right: -1px;
+            width: 20px; height: 20px;
+            border-bottom: 2px solid var(--neon-blue);
+            border-right: 2px solid var(--neon-blue);
+        }
+        .panel::before {
+            content: ''; position: absolute; top: -1px; left: -1px;
+            width: 20px; height: 20px;
+            border-top: 2px solid var(--neon-blue);
+            border-left: 2px solid var(--neon-blue);
+        }
+
+        /* === 左侧：引擎状态 === */
+        .left-panel { transform: rotateY(15deg) rotateX(10deg); align-items: flex-end; text-align: right; }
+        .data-row { width: 100%; display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.7); }
+        .bar-chart { width: 100%; height: 40px; display: flex; align-items: flex-end; gap: 4px; margin-top: auto; }
+        .bar { width: 10%; background: var(--neon-blue); opacity: 0.5; animation: eq-bounce 1s infinite alternate; }
+        
+        /* === 右侧：雷达系统 === */
+        .right-panel { transform: rotateY(-15deg) rotateX(10deg); align-items: center; justify-content: center; }
+        .radar-circle {
+            width: 120px; height: 120px; border: 1px dashed var(--neon-blue); border-radius: 50%;
+            position: relative;
+            background: radial-gradient(circle, rgba(0, 243, 255, 0.1) 0%, transparent 70%);
+        }
+        .radar-scan {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 243, 255, 0.4) 60deg, transparent 60.1deg);
+            animation: radar-spin 4s linear infinite;
+        }
+
+        /* === 中间：主导航 (重头戏) === */
+        .center-panel {
+            transform: rotateX(10deg) translateZ(20px); /* 中间突前一点 */
+            border: none; background: transparent; box-shadow: none; backdrop-filter: none;
+            justify-content: flex-end; padding-bottom: 0;
+        }
+
+        .nav-grid {
+            display: flex; gap: 15px; justify-content: center; width: 100%;
+        }
+
+        .nav-btn {
+            position: relative;
+            width: 140px; height: 80px;
+            background: rgba(0, 20, 30, 0.8);
+            border: 1px solid var(--neon-blue);
+            color: #fff;
+            text-decoration: none;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            clip-path: polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
-            width: 100%;
         }
-        .speed-group button {
-            border: none;
-            border-right: 1px solid #dee2e6;
-            border-radius: 0;
-            padding: 10px 0;
-            background: #fff;
-            flex: 1;
-            font-size: 0.85rem;
+        
+        /* 按钮内发光文字 */
+        .nav-btn h3 { margin: 0; font-size: 16px; letter-spacing: 2px; z-index: 2; text-shadow: 0 0 5px var(--neon-blue); }
+        .nav-btn span { font-size: 10px; color: var(--neon-blue); opacity: 0.7; z-index: 2; margin-top: 4px; }
+
+        /* 按钮悬停态 */
+        .nav-btn:hover {
+            background: rgba(0, 243, 255, 0.15);
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 243, 255, 0.2);
+            border-color: #fff;
         }
-        .speed-group button:last-child { border-right: none; }
-        .speed-group button.active {
-            background-color: #6c757d;
-            color: white;
+        .nav-btn:hover span { color: #fff; }
+
+        /* 按钮扫描线特效 */
+        .nav-btn::after {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: linear-gradient(transparent, rgba(0, 243, 255, 0.3), transparent);
+            transform: rotate(45deg) translateY(-100%);
+            transition: transform 0s;
+        }
+        .nav-btn:hover::after {
+            transform: rotate(45deg) translateY(100%);
+            transition: transform 0.6s ease-in-out;
         }
 
-        /* 图例 */
-        .legend {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 5px;
-            font-size: 0.85rem;
-        }
-        .dot { width: 10px; height: 10px; display: inline-block; border-radius: 50%; margin-right: 4px; }
-        .g1-color { background-color: #FF5733; }
-        .g2-color { background-color: #3375FF; }
+        /* 动画定义 */
+        @keyframes radar-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes eq-bounce { 0% { height: 20%; } 100% { height: 90%; } }
 
-        /* 针对距离显示做特殊处理，防止挤压 */
-        #distDisplay {
-            white-space: nowrap;
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            #hud-container { grid-template-columns: 1fr; height: auto; }
+            .left-panel, .right-panel { display: none; } /* 手机上隐藏两侧面板，只留导航 */
+            .center-panel { width: 100%; transform: none; }
+            .nav-grid { flex-wrap: wrap; }
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 
-    <h2>数轴运动可视化</h2>
-
-    <div class="legend">
-        <span><span class="dot g1-color"></span>g1 (带电)</span>
-        <span><span class="dot g2-color"></span>g2 (不带电)</span>
+    <div class="cinematic-bar">
+        <div>SYS: ONLINE</div>
+        <div class="warning-text">GRAVITY WELL DETECTED</div>
+        <div>T-MINUS: NULL</div>
     </div>
 
-    <div class="canvas-container">
-        <canvas id="motionCanvas"></canvas>
-    </div>
-
-    <div class="status-panel">
-        <div style="display:flex; flex-direction:column;">
-            <span id="timeDisplay" style="font-weight:bold;">T = 0.00 s</span>
-            <span id="speedDisplay" style="font-size: 0.8em; color: #888;">速度: 1.0x</span>
-        </div>
-        <span id="distDisplay" style="font-weight:bold; color:#555;">距离: --</span>
-    </div>
-
-    <div class="controls">
-        <div class="slider-container">
-            <span>0s</span>
-            <input type="range" id="timeSlider" min="0" max="65" step="0.05" value="0">
-            <span>65s</span>
-        </div>
-
-        <div class="control-row">
-            <button id="playPauseBtn" class="primary">播放</button>
-            <button class="reset" onclick="setTime(0)">重置</button>
-        </div>
-
-        <div class="control-row" style="flex-direction: column; align-items: stretch;">
-            <div class="speed-label">播放速度</div>
-            <div class="speed-group">
-                <button onclick="setSpeed(0.5)" id="spd05">0.5x</button>
-                <button onclick="setSpeed(1.0)" id="spd10" class="active">1.0x</button>
-                <button onclick="setSpeed(2.0)" id="spd20">2.0x</button>
-                <button onclick="setSpeed(5.0)" id="spd50">5.0x</button>
-                <button onclick="setSpeed(10.0)" id="spd100">10x</button>
+    <div id="hud-container">
+        <div class="panel left-panel">
+            <div style="border-bottom: 1px solid var(--neon-blue); width:100%; padding-bottom:5px; margin-bottom:10px;">REACTOR STATUS</div>
+            <div class="data-row"><span>CORE TEMP</span><span>3,400 K</span></div>
+            <div class="data-row"><span>SHIELD</span><span>98%</span></div>
+            <div class="data-row"><span>WARP DRIVE</span><span>CHARGING</span></div>
+            <div class="bar-chart">
+                <div class="bar" style="animation-delay: 0.1s"></div>
+                <div class="bar" style="animation-delay: 0.3s"></div>
+                <div class="bar" style="animation-delay: 0.5s"></div>
+                <div class="bar" style="animation-delay: 0.2s"></div>
+                <div class="bar" style="animation-delay: 0.4s"></div>
             </div>
         </div>
 
-        <div class="control-row" style="flex-direction: column; align-items: stretch;">
-            <div class="speed-label" style="margin-top:5px;">关键节点跳转</div>
-            <div class="key-points-grid">
-                <button class="key-point" onclick="setTime(8)">T=8 (距2)</button>
-                <button class="key-point" onclick="setTime(9)">T=9 (相遇)</button>
-                <button class="key-point" onclick="setTime(10)">T=10 (距2)</button>
-                <button class="key-point" onclick="setTime(11)">T=11 (距2)</button>
-                <button class="key-point" onclick="setTime(34)">T=34 (加速)</button>
-                <button class="key-point" onclick="setTime(58)">T=58 (距2)</button>
-                <button class="key-point" onclick="setTime(60)">T=60 (距2)</button>
+        <div class="panel center-panel">
+            <div class="nav-grid" id="nav-container">
+                </div>
+        </div>
+
+        <div class="panel right-panel">
+            <div class="radar-circle">
+                <div class="radar-scan"></div>
+                <div style="position:absolute; top:50%; left:50%; width:4px; height:4px; background:#fff; transform:translate(-50%,-50%); border-radius:50%;"></div>
             </div>
+            <div style="margin-top:10px; font-size:10px; letter-spacing:1px; color:var(--neon-blue);">PROXIMITY ALERT</div>
         </div>
     </div>
 
-<script>
-    const canvas = document.getElementById('motionCanvas');
-    const ctx = canvas.getContext('2d');
-    const container = document.querySelector('.canvas-container');
-    const slider = document.getElementById('timeSlider');
-    const timeDisplay = document.getElementById('timeDisplay');
-    const distDisplay = document.getElementById('distDisplay');
-    const playPauseBtn = document.getElementById('playPauseBtn');
-    const speedDisplay = document.getElementById('speedDisplay');
+    <script>
+        // ==========================================
+        // 1. 导航配置 (在这里修改你的链接)
+        // ==========================================
+        const navItems = [
+            { title: "HOME", sub: "主舰桥", link: "/" },
+            { title: "BLOG", sub: "航行日志", link: "/visual" },
+            { title: "WORKS", sub: "武器库", link: "/colliding-ball" },
+            { title: "GITHUB", sub: "源代码", link: "https://github.com" }
+        ];
 
-    // --- 物理参数配置 ---
-    // 视口逻辑范围：从 -145 到 30
-    const VIEW_MIN = -145;
-    const VIEW_MAX = 30;
-    const VIEW_WIDTH = VIEW_MAX - VIEW_MIN;
-    
-    let scale = 1; 
-    let originXPixel = 0;
-    
-    let currentTime = 0;
-    let isPlaying = false;
-    let animationId;
-    let playbackSpeed = 1.0;
-
-    // --- 响应式画布处理 ---
-    function resizeCanvas() {
-        // 获取容器当前宽度
-        const width = container.clientWidth;
-        // 设置画布高度 (保持一定比例，例如 2.8:1，或者固定高度)
-        // 移动端屏幕较窄，高度可以稍微设小一点以便留给按钮
-        const height = Math.min(300, width * 0.6); 
-        
-        canvas.width = width;
-        canvas.height = height;
-
-        // 重新计算比例尺
-        scale = width / VIEW_WIDTH;
-        originXPixel = Math.abs(VIEW_MIN) * scale;
-
-        // 立即重绘
-        draw();
-    }
-
-    // 监听窗口大小改变（包括横竖屏切换）
-    window.addEventListener('resize', resizeCanvas);
-
-    // --- 坐标转换 ---
-    function toCanvasX(physX) {
-        return originXPixel + physX * scale;
-    }
-
-    // --- 物理状态计算 (不变) ---
-    function getG1State(t) {
-        let x, v;
-        if (t < 12) {
-            x = 10 + 1 * t;
-            v = 1;
-        } else if (t >= 12 && t < 34) {
-            x = 22 - 1 * (t - 12);
-            v = -1;
-        } else {
-            x = 0 - 5 * (t - 34);
-            v = -5;
-        }
-        return { x, v };
-    }
-
-    function getG2State(t) {
-        let x, v;
-        if (t < 10) {
-            x = -8 + 3 * t;
-            v = 3;
-        } else {
-            x = 22 - 3 * (t - 10);
-            v = -3;
-        }
-        return { x, v };
-    }
-
-    // --- 绘图函数 ---
-    function draw() {
-        const width = canvas.width;
-        const height = canvas.height;
-        const axisY = height / 2;
-
-        ctx.clearRect(0, 0, width, height);
-        
-        // 1. 绘制加速带区域 (x=0)
-        // 为了醒目，稍微画宽一点
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
-        let accelStart = toCanvasX(-2);
-        let accelEnd = toCanvasX(2);
-        ctx.fillRect(accelStart, 0, accelEnd - accelStart, height);
-        
-        // 2. 绘制坐标轴
-        ctx.beginPath();
-        ctx.strokeStyle = '#888';
-        ctx.lineWidth = 2;
-        ctx.moveTo(0, axisY);
-        ctx.lineTo(width, axisY);
-        ctx.stroke();
-
-        // 3. 绘制刻度
-        ctx.fillStyle = '#666';
-        ctx.textAlign = 'center';
-        
-        // 根据屏幕宽度决定刻度密度
-        // 屏幕窄时，每20画一个；屏幕宽时，每10画一个
-        let step = width < 500 ? 20 : 10;
-        let fontSize = width < 400 ? '9px' : '10px';
-        ctx.font = fontSize + ' Arial';
-
-        for (let i = -140; i <= 25; i += step) {
-            let px = toCanvasX(i);
-            ctx.beginPath();
-            ctx.moveTo(px, axisY - 4);
-            ctx.lineTo(px, axisY + 4);
-            ctx.stroke();
-            ctx.fillText(i, px, axisY + 18);
-        }
-
-        // 4. 绘制挡板 (x=22)
-        let wallX = toCanvasX(22);
-        ctx.beginPath();
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#333';
-        ctx.moveTo(wallX, axisY - 35);
-        ctx.lineTo(wallX, axisY + 35);
-        ctx.stroke();
-        
-        // 挡板文字
-        ctx.fillText("挡板", wallX, axisY - 42);
-
-        // 加速带标记
-        let originX = toCanvasX(0);
-        ctx.beginPath();
-        ctx.strokeStyle = '#e6ac00';
-        ctx.setLineDash([5, 5]);
-        ctx.moveTo(originX, 0);
-        ctx.lineTo(originX, height);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = '#b38600';
-        ctx.fillText("加速", originX, axisY - 42);
-
-        // 5. 计算位置
-        const g1 = getG1State(currentTime);
-        const g2 = getG2State(currentTime);
-        const distance = Math.abs(g1.x - g2.x);
-
-        // 绘制小球半径 (随屏幕大小微调，最小6px)
-        const radius = Math.max(6, width * 0.015);
-
-        // 绘制 g1
-        let g1Px = toCanvasX(g1.x);
-        ctx.beginPath();
-        ctx.fillStyle = '#FF5733';
-        ctx.arc(g1Px, axisY - radius * 2, radius, 0, Math.PI * 2);
-        ctx.fill();
-        // g1 标签
-        ctx.fillStyle = '#FF5733';
-        ctx.font = 'bold ' + fontSize + ' Arial';
-        ctx.fillText("g1", g1Px, axisY - radius * 3.5);
-
-        // 绘制 g2
-        let g2Px = toCanvasX(g2.x);
-        ctx.beginPath();
-        ctx.fillStyle = '#3375FF';
-        ctx.arc(g2Px, axisY + radius * 2, radius, 0, Math.PI * 2);
-        ctx.fill();
-        // g2 标签
-        ctx.fillStyle = '#3375FF';
-        ctx.fillText("g2", g2Px, axisY + radius * 4.5);
-
-        // 6. 视觉反馈：距离
-        if (distance < 0.2) {
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-            ctx.fillRect(g1Px - 15, axisY - 50, 30, 100);
-            ctx.fillStyle = 'red';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText("相遇!", g1Px, axisY - 60);
-        }
-        else if (Math.abs(distance - 2) < 0.2) {
-            ctx.strokeStyle = 'green';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(g1Px, axisY - radius*2);
-            ctx.lineTo(g2Px, axisY + radius*2);
-            ctx.stroke();
-            
-            ctx.fillStyle = 'green';
-            ctx.font = 'bold 12px Arial';
-            // 防止文字重叠，稍微偏一点
-            ctx.fillText("D=2", (g1Px + g2Px)/2, axisY);
-        }
-
-        // 更新 DOM
-        timeDisplay.innerText = `T = ${currentTime.toFixed(2)} s`;
-        distDisplay.innerText = `距离: ${distance.toFixed(2)}`;
-        
-        if(Math.abs(distance - 2) < 0.05) {
-            distDisplay.style.color = 'green';
-        } else if (distance < 0.1) {
-            distDisplay.style.color = 'red';
-        } else {
-            distDisplay.style.color = '#555';
-        }
-    }
-
-    // --- 控制逻辑 ---
-    function setSpeed(speed) {
-        playbackSpeed = speed;
-        speedDisplay.innerText = `速度: ${speed}x`;
-        document.querySelectorAll('.speed-group button').forEach(btn => {
-            btn.classList.remove('active');
+        const navContainer = document.getElementById('nav-container');
+        navItems.forEach(item => {
+            const a = document.createElement('a');
+            a.href = item.link;
+            a.className = 'nav-btn';
+            a.innerHTML = `<h3>${item.title}</h3><span>${item.sub}</span>`;
+            navContainer.appendChild(a);
         });
+
+        // ==========================================
+        // 2. Three.js 黑洞与时空扭曲渲染
+        // ==========================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 30, 80); // 相机位置拉高，俯视黑洞
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- A. 黑洞本体 (Event Horizon) ---
+        const blackHoleGeo = new THREE.SphereGeometry(10, 64, 64);
+        const blackHoleMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const blackHole = new THREE.Mesh(blackHoleGeo, blackHoleMat);
+        scene.add(blackHole);
+
+        // --- B. 吸积盘 (Accretion Disk) - 发光的环 ---
+        // 使用两个环，模拟复杂的吸积盘
+        const diskGeo = new THREE.RingGeometry(12, 35, 64);
+        // 让环稍微倾斜一点
+        diskGeo.rotateX(-Math.PI / 2); 
         
-        let btnId;
-        if(speed === 0.5) btnId = 'spd05';
-        else if(speed === 1.0) btnId = 'spd10';
-        else if(speed === 2.0) btnId = 'spd20';
-        else if(speed === 5.0) btnId = 'spd50';
-        else if(speed === 10.0) btnId = 'spd100';
-        if(btnId) document.getElementById(btnId).classList.add('active');
-    }
+        // 自定义材质实现光晕效果
+        const diskMat = new THREE.MeshBasicMaterial({ 
+            color: 0xffaa00, // 橙色/琥珀色，像星际穿越那样
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending 
+        });
+        const disk = new THREE.Mesh(diskGeo, diskMat);
+        // scene.add(disk);
 
-    function update() {
-        if (isPlaying) {
-            currentTime += 0.05 * playbackSpeed;
-            if (currentTime > 65) {
-                currentTime = 65;
-                isPlaying = false;
-                playPauseBtn.innerText = "播放";
-                playPauseBtn.classList.remove('primary');
-                playPauseBtn.style.backgroundColor = "";
-                playPauseBtn.style.color = "";
+        // --- C. 时空网格 (Space-Time Grid) ---
+        // 关键点：分段数要足够多，才能表现出平滑的扭曲
+        const gridSegments = 100;
+        const gridSize = 300;
+        const gridGeo = new THREE.PlaneGeometry(gridSize, gridSize, gridSegments, gridSegments);
+        gridGeo.rotateX(-Math.PI / 2);
+
+        // 保存原始顶点位置，用于动画计算
+        const originalPositions = gridGeo.attributes.position.array.slice();
+
+        const gridMat = new THREE.MeshBasicMaterial({ 
+            color: 0x00f3ff, 
+            wireframe: true,
+            transparent: true,
+            opacity: 0.15 
+        });
+        const grid = new THREE.Mesh(gridGeo, gridMat);
+        scene.add(grid);
+
+        // --- D. 粒子星空 ---
+        const starsGeo = new THREE.BufferGeometry();
+        const starCount = 2000;
+        const starPos = new Float32Array(starCount * 3);
+        for(let i=0; i<starCount*3; i++) {
+            starPos[i] = (Math.random() - 0.5) * 600;
+        }
+        starsGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true });
+        const starSystem = new THREE.Points(starsGeo, starsMat);
+        scene.add(starSystem);
+
+
+        // ==========================================
+        // 3. 物理与动画循环
+        // ==========================================
+        let time = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.01;
+
+            // 1. 网格扭曲计算 (核心算法)
+            const positions = grid.geometry.attributes.position.array;
+            
+            for(let i = 0; i < positions.length; i += 3) {
+                // 获取原始平面的坐标 (x, 0, z)
+                // 注意：由于我们旋转了平面，原来的 z 轴现在对应世界坐标的 z (深度)，y 是高度
+                // 在 PlaneGeometry 原始数据中，z 是 0。旋转后，buffer 里的坐标被变换了吗？
+                // ThreeJS 的 geometry.rotateX 实际上改变了顶点数据。
+                // 现在的 positions[i+1] 是 y (高度), positions[i+2] 是 z.
+                
+                let x = originalPositions[i];
+                let z = originalPositions[i+2]; // 原始的Z实际上是平面的Y轴方向，但因为旋转了...
+                
+                // 纠正：使用原始数据的映射。
+                // 原始 Plane: X=x, Y=y, Z=0. 
+                // RotateX(-90): X=x, Y=0, Z=y.
+                // 我们直接读取当前的 x 和 z
+                x = positions[i];
+                z = positions[i+2];
+
+                // 计算到中心的距离
+                const dist = Math.sqrt(x*x + z*z);
+                
+                // 避免除以0
+                const safeDist = Math.max(10, dist);
+
+                // --- 效果1: 引力井 (Gravity Well) ---
+                // 距离越近，Y值越低 (向下陷)
+                // 公式： -Factor / dist
+                const gravity = -2000 / (safeDist * safeDist + 100) * 15;
+                positions[i+1] = gravity;
+
+                // --- 效果2: 参考系拖拽 (Frame Dragging) ---
+                // 距离越近，旋转角度越大
+                // 我们需要手动旋转顶点 (x,z) 围绕原点 (0,0)
+                // 扭曲因子：越近越大
+                const twistAngle = (30 / safeDist) * Math.sin(time * 0.5) * 0.5; 
+                // 为了让它看起来像漩涡，加上一个固定的旋转偏移
+                const spiralAngle = -time * 2 * (50 / safeDist); 
+
+                // 简单的实现：我们不改变 x 和 z 的物理位置太剧烈，否则网格会乱。
+                // 我们主要通过颜色或者微调 UV 来做？
+                // 不，直接修改 Y 已经很有引力感了。
+                // 为了增加动感，我们叠加一个波动：
+                positions[i+1] += Math.sin(dist * 0.2 - time * 5) * 2;
             }
-            slider.value = currentTime;
-            draw();
-            animationId = requestAnimationFrame(update);
+            grid.geometry.attributes.position.needsUpdate = true;
+
+            // 2. 吸积盘旋转
+            disk.rotation.z = time * 0.2; // 自身旋转
+            // 让吸积盘有点波动
+            disk.rotation.x = -Math.PI / 2 + Math.sin(time) * 0.1;
+
+            // 3. 粒子系统缓慢旋转
+            starSystem.rotation.y = time * 0.05;
+
+            // 4. 摄像机微动 (呼吸感)
+            camera.position.y = 30 + Math.sin(time * 0.5) * 2;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
         }
-    }
 
-    function setTime(t) {
-        currentTime = t;
-        slider.value = t;
-        draw();
-    }
+        // 窗口自适应
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
 
-    playPauseBtn.addEventListener('click', () => {
-        isPlaying = !isPlaying;
-        if (isPlaying) {
-            playPauseBtn.innerText = "暂停";
-            playPauseBtn.classList.add('primary'); // 激活态样式
-            update();
-        } else {
-            playPauseBtn.innerText = "播放";
-            playPauseBtn.classList.remove('primary');
-            cancelAnimationFrame(animationId);
-        }
-    });
-
-    slider.addEventListener('input', (e) => {
-        currentTime = parseFloat(e.target.value);
-        draw();
-    });
-
-    // 初始化：先触发一次 resize 以设置正确的尺寸
-    resizeCanvas();
-
-</script>
+        animate();
+    </script>
 </body>
 </html>
