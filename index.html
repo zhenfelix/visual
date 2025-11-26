@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>数轴运动可视化 (移动端适配)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            margin: 0;
+            color: #333;
+            /* 防止移动端长按选中文字影响体验 */
+            -webkit-user-select: none;
+            user-select: none; 
+        }
+        
+        h2 { 
+            font-size: 1.2rem; 
+            margin: 10px 0; 
+            text-align: center;
+        }
+
+        /* 容器改为百分比宽度，最大不超过850px */
+        .canvas-container {
+            width: 100%;
+            max-width: 850px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 10px;
+            overflow: hidden; /* 防止canvas溢出 */
+        }
+        canvas { 
+            display: block; 
+            width: 100%; /* CSS控制显示宽度 */
+            height: auto;
+        }
+        
+        /* 状态面板 */
+        .status-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            background: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        /* 控制面板 */
+        .controls {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 850px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding-bottom: 30px; /* 底部留白给手指操作 */
+        }
+
+        /* 进度条区域 */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            font-size: 0.9rem;
+        }
+        /* 增大滑块触摸区域 */
+        input[type=range] {
+            flex-grow: 1;
+            height: 25px; 
+            cursor: pointer;
+        }
+
+        /* 按钮行 - 允许换行 */
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        /* 通用按钮样式 - 增大点击区域 */
+        button {
+            padding: 10px 12px; /* 增加内边距 */
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #f9f9f9;
+            color: #444;
+            font-size: 0.9rem;
+            touch-action: manipulation; /* 优化点击响应 */
+            flex: 1 0 auto; /* 弹性布局，防止挤压 */
+        }
+        button:active { background-color: #e2e6ea; }
+        
+        button.primary { background-color: #007bff; color: white; border: none; font-weight: 600; min-width: 80px;}
+        button.primary:active { background-color: #0056b3; }
+        
+        button.reset { background-color: #fff; border-color: #dc3545; color: #dc3545; }
+        button.reset:active { background-color: #dc3545; color: white; }
+        
+        /* 关键点按钮群 */
+        .key-points-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); /* 自动网格布局 */
+            gap: 8px;
+            width: 100%;
+        }
+        button.key-point { 
+            background-color: #e8f5e9; 
+            color: #2e7d32; 
+            border: 1px solid #c8e6c9;
+            font-size: 0.85rem;
+            padding: 8px 4px;
+        }
+        button.key-point:active { background-color: #c8e6c9; }
+
+        /* 速度按钮组 */
+        .speed-label { font-size: 0.9rem; color: #666; width: 100%; text-align: center; margin-bottom: 5px; }
+        .speed-group {
+            display: flex;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            overflow: hidden;
+            width: 100%;
+        }
+        .speed-group button {
+            border: none;
+            border-right: 1px solid #dee2e6;
+            border-radius: 0;
+            padding: 10px 0;
+            background: #fff;
+            flex: 1;
+            font-size: 0.85rem;
+        }
+        .speed-group button:last-child { border-right: none; }
+        .speed-group button.active {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        /* 图例 */
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+        }
+        .dot { width: 10px; height: 10px; display: inline-block; border-radius: 50%; margin-right: 4px; }
+        .g1-color { background-color: #FF5733; }
+        .g2-color { background-color: #3375FF; }
+
+        /* 针对距离显示做特殊处理，防止挤压 */
+        #distDisplay {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>数轴运动可视化</h2>
+
+    <div class="legend">
+        <span><span class="dot g1-color"></span>g1 (带电)</span>
+        <span><span class="dot g2-color"></span>g2 (不带电)</span>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="motionCanvas"></canvas>
+    </div>
+
+    <div class="status-panel">
+        <div style="display:flex; flex-direction:column;">
+            <span id="timeDisplay" style="font-weight:bold;">T = 0.00 s</span>
+            <span id="speedDisplay" style="font-size: 0.8em; color: #888;">速度: 1.0x</span>
+        </div>
+        <span id="distDisplay" style="font-weight:bold; color:#555;">距离: --</span>
+    </div>
+
+    <div class="controls">
+        <div class="slider-container">
+            <span>0s</span>
+            <input type="range" id="timeSlider" min="0" max="65" step="0.05" value="0">
+            <span>65s</span>
+        </div>
+
+        <div class="control-row">
+            <button id="playPauseBtn" class="primary">播放</button>
+            <button class="reset" onclick="setTime(0)">重置</button>
+        </div>
+
+        <div class="control-row" style="flex-direction: column; align-items: stretch;">
+            <div class="speed-label">播放速度</div>
+            <div class="speed-group">
+                <button onclick="setSpeed(0.5)" id="spd05">0.5x</button>
+                <button onclick="setSpeed(1.0)" id="spd10" class="active">1.0x</button>
+                <button onclick="setSpeed(2.0)" id="spd20">2.0x</button>
+                <button onclick="setSpeed(5.0)" id="spd50">5.0x</button>
+                <button onclick="setSpeed(10.0)" id="spd100">10x</button>
+            </div>
+        </div>
+
+        <div class="control-row" style="flex-direction: column; align-items: stretch;">
+            <div class="speed-label" style="margin-top:5px;">关键节点跳转</div>
+            <div class="key-points-grid">
+                <button class="key-point" onclick="setTime(8)">T=8 (距2)</button>
+                <button class="key-point" onclick="setTime(9)">T=9 (相遇)</button>
+                <button class="key-point" onclick="setTime(10)">T=10 (距2)</button>
+                <button class="key-point" onclick="setTime(11)">T=11 (距2)</button>
+                <button class="key-point" onclick="setTime(34)">T=34 (加速)</button>
+                <button class="key-point" onclick="setTime(58)">T=58 (距2)</button>
+                <button class="key-point" onclick="setTime(60)">T=60 (距2)</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('motionCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.querySelector('.canvas-container');
+    const slider = document.getElementById('timeSlider');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const distDisplay = document.getElementById('distDisplay');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const speedDisplay = document.getElementById('speedDisplay');
+
+    // --- 物理参数配置 ---
+    // 视口逻辑范围：从 -145 到 30
+    const VIEW_MIN = -145;
+    const VIEW_MAX = 30;
+    const VIEW_WIDTH = VIEW_MAX - VIEW_MIN;
+    
+    let scale = 1; 
+    let originXPixel = 0;
+    
+    let currentTime = 0;
+    let isPlaying = false;
+    let animationId;
+    let playbackSpeed = 1.0;
+
+    // --- 响应式画布处理 ---
+    function resizeCanvas() {
+        // 获取容器当前宽度
+        const width = container.clientWidth;
+        // 设置画布高度 (保持一定比例，例如 2.8:1，或者固定高度)
+        // 移动端屏幕较窄，高度可以稍微设小一点以便留给按钮
+        const height = Math.min(300, width * 0.6); 
+        
+        canvas.width = width;
+        canvas.height = height;
+
+        // 重新计算比例尺
+        scale = width / VIEW_WIDTH;
+        originXPixel = Math.abs(VIEW_MIN) * scale;
+
+        // 立即重绘
+        draw();
+    }
+
+    // 监听窗口大小改变（包括横竖屏切换）
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- 坐标转换 ---
+    function toCanvasX(physX) {
+        return originXPixel + physX * scale;
+    }
+
+    // --- 物理状态计算 (不变) ---
+    function getG1State(t) {
+        let x, v;
+        if (t < 12) {
+            x = 10 + 1 * t;
+            v = 1;
+        } else if (t >= 12 && t < 34) {
+            x = 22 - 1 * (t - 12);
+            v = -1;
+        } else {
+            x = 0 - 5 * (t - 34);
+            v = -5;
+        }
+        return { x, v };
+    }
+
+    function getG2State(t) {
+        let x, v;
+        if (t < 10) {
+            x = -8 + 3 * t;
+            v = 3;
+        } else {
+            x = 22 - 3 * (t - 10);
+            v = -3;
+        }
+        return { x, v };
+    }
+
+    // --- 绘图函数 ---
+    function draw() {
+        const width = canvas.width;
+        const height = canvas.height;
+        const axisY = height / 2;
+
+        ctx.clearRect(0, 0, width, height);
+        
+        // 1. 绘制加速带区域 (x=0)
+        // 为了醒目，稍微画宽一点
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+        let accelStart = toCanvasX(-2);
+        let accelEnd = toCanvasX(2);
+        ctx.fillRect(accelStart, 0, accelEnd - accelStart, height);
+        
+        // 2. 绘制坐标轴
+        ctx.beginPath();
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 2;
+        ctx.moveTo(0, axisY);
+        ctx.lineTo(width, axisY);
+        ctx.stroke();
+
+        // 3. 绘制刻度
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        
+        // 根据屏幕宽度决定刻度密度
+        // 屏幕窄时，每20画一个；屏幕宽时，每10画一个
+        let step = width < 500 ? 20 : 10;
+        let fontSize = width < 400 ? '9px' : '10px';
+        ctx.font = fontSize + ' Arial';
+
+        for (let i = -140; i <= 25; i += step) {
+            let px = toCanvasX(i);
+            ctx.beginPath();
+            ctx.moveTo(px, axisY - 4);
+            ctx.lineTo(px, axisY + 4);
+            ctx.stroke();
+            ctx.fillText(i, px, axisY + 18);
+        }
+
+        // 4. 绘制挡板 (x=22)
+        let wallX = toCanvasX(22);
+        ctx.beginPath();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#333';
+        ctx.moveTo(wallX, axisY - 35);
+        ctx.lineTo(wallX, axisY + 35);
+        ctx.stroke();
+        
+        // 挡板文字
+        ctx.fillText("挡板", wallX, axisY - 42);
+
+        // 加速带标记
+        let originX = toCanvasX(0);
+        ctx.beginPath();
+        ctx.strokeStyle = '#e6ac00';
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(originX, 0);
+        ctx.lineTo(originX, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#b38600';
+        ctx.fillText("加速", originX, axisY - 42);
+
+        // 5. 计算位置
+        const g1 = getG1State(currentTime);
+        const g2 = getG2State(currentTime);
+        const distance = Math.abs(g1.x - g2.x);
+
+        // 绘制小球半径 (随屏幕大小微调，最小6px)
+        const radius = Math.max(6, width * 0.015);
+
+        // 绘制 g1
+        let g1Px = toCanvasX(g1.x);
+        ctx.beginPath();
+        ctx.fillStyle = '#FF5733';
+        ctx.arc(g1Px, axisY - radius * 2, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // g1 标签
+        ctx.fillStyle = '#FF5733';
+        ctx.font = 'bold ' + fontSize + ' Arial';
+        ctx.fillText("g1", g1Px, axisY - radius * 3.5);
+
+        // 绘制 g2
+        let g2Px = toCanvasX(g2.x);
+        ctx.beginPath();
+        ctx.fillStyle = '#3375FF';
+        ctx.arc(g2Px, axisY + radius * 2, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // g2 标签
+        ctx.fillStyle = '#3375FF';
+        ctx.fillText("g2", g2Px, axisY + radius * 4.5);
+
+        // 6. 视觉反馈：距离
+        if (distance < 0.2) {
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+            ctx.fillRect(g1Px - 15, axisY - 50, 30, 100);
+            ctx.fillStyle = 'red';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText("相遇!", g1Px, axisY - 60);
+        }
+        else if (Math.abs(distance - 2) < 0.2) {
+            ctx.strokeStyle = 'green';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(g1Px, axisY - radius*2);
+            ctx.lineTo(g2Px, axisY + radius*2);
+            ctx.stroke();
+            
+            ctx.fillStyle = 'green';
+            ctx.font = 'bold 12px Arial';
+            // 防止文字重叠，稍微偏一点
+            ctx.fillText("D=2", (g1Px + g2Px)/2, axisY);
+        }
+
+        // 更新 DOM
+        timeDisplay.innerText = `T = ${currentTime.toFixed(2)} s`;
+        distDisplay.innerText = `距离: ${distance.toFixed(2)}`;
+        
+        if(Math.abs(distance - 2) < 0.05) {
+            distDisplay.style.color = 'green';
+        } else if (distance < 0.1) {
+            distDisplay.style.color = 'red';
+        } else {
+            distDisplay.style.color = '#555';
+        }
+    }
+
+    // --- 控制逻辑 ---
+    function setSpeed(speed) {
+        playbackSpeed = speed;
+        speedDisplay.innerText = `速度: ${speed}x`;
+        document.querySelectorAll('.speed-group button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        let btnId;
+        if(speed === 0.5) btnId = 'spd05';
+        else if(speed === 1.0) btnId = 'spd10';
+        else if(speed === 2.0) btnId = 'spd20';
+        else if(speed === 5.0) btnId = 'spd50';
+        else if(speed === 10.0) btnId = 'spd100';
+        if(btnId) document.getElementById(btnId).classList.add('active');
+    }
+
+    function update() {
+        if (isPlaying) {
+            currentTime += 0.05 * playbackSpeed;
+            if (currentTime > 65) {
+                currentTime = 65;
+                isPlaying = false;
+                playPauseBtn.innerText = "播放";
+                playPauseBtn.classList.remove('primary');
+                playPauseBtn.style.backgroundColor = "";
+                playPauseBtn.style.color = "";
+            }
+            slider.value = currentTime;
+            draw();
+            animationId = requestAnimationFrame(update);
+        }
+    }
+
+    function setTime(t) {
+        currentTime = t;
+        slider.value = t;
+        draw();
+    }
+
+    playPauseBtn.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            playPauseBtn.innerText = "暂停";
+            playPauseBtn.classList.add('primary'); // 激活态样式
+            update();
+        } else {
+            playPauseBtn.innerText = "播放";
+            playPauseBtn.classList.remove('primary');
+            cancelAnimationFrame(animationId);
+        }
+    });
+
+    slider.addEventListener('input', (e) => {
+        currentTime = parseFloat(e.target.value);
+        draw();
+    });
+
+    // 初始化：先触发一次 resize 以设置正确的尺寸
+    resizeCanvas();
+
+</script>
+</body>
+</html>
